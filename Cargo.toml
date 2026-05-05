@@ -1,0 +1,14 @@
+[package]
+name = "playku"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+anyhow = "1.0"
+libmpv2 = "5.0.3"
+
+[profile.release]
+lto = true          # Link Time Optimization (Removes dead code across crates)
+codegen-units = 1   # Slower compile time, but highly optimized execution
+strip = true        # Removes debugging symbols from the binary
+opt-level = "s"     # Optimizes for binary size
