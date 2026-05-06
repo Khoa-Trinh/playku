@@ -149,4 +149,16 @@ impl MpvPlayer {
             .context("Failed to set volume")?;
         Ok(())
     }
+
+    /// Block natively on the mpv event loop until shutdown/close
+    pub fn wait(&mut self) {
+        loop {
+            // -1.0 blocks the thread natively (0% CPU)
+            match self.mpv.wait_event(-1.0) {
+                Some(Ok(libmpv2::events::Event::Shutdown)) => break,
+                Some(Err(_)) | None => std::thread::sleep(std::time::Duration::from_millis(10)),
+                _ => {}
+            }
+        }
+    }
 }
