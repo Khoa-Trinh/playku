@@ -1,3 +1,6 @@
 /target
-/mpv_config
+/mpv_config/*
+!/mpv_config/input.conf
+!/mpv_config/mpv.conf
+!/mpv_config/script-opts/
 /mpv_lib
