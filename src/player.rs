@@ -1,5 +1,6 @@
 use anyhow::{Context, Result};
 use libmpv2::Mpv;
+use crate::youtube::parse_youtube_url;
 
 pub struct MpvPlayer {
     mpv: Mpv,
@@ -7,9 +8,9 @@ pub struct MpvPlayer {
 
 impl MpvPlayer {
     /// Initialize a new mpv instance with optimized settings for streaming
-    pub fn new(config_dir: &str) -> Result<Self> {
+    pub fn new(config_dir: &str, audio_only: bool) -> Result<Self> {
         // Use with_initializer to configure the engine BEFORE it boots!
-        let mpv = Mpv::with_initializer(|builder| {
+        let mpv = Mpv::with_initializer(move |builder| {
             // Force the engine to act like a full native player
             builder.set_property("config", "yes")?;
             builder.set_property("config-dir", config_dir)?;
@@ -17,36 +18,60 @@ impl MpvPlayer {
             builder.set_property("load-scripts", "yes")?;
             // Enable internal ytdl hook for DASH seeking and quality management
             builder.set_property("ytdl", "yes")?;
+            
+            if audio_only {
+                // Disable video decoding entirely
+                builder.set_property("vid", "no")?;
+                builder.set_property("force-window", "yes")?;
+            }
+            
             Ok(())
         })
         .map_err(|e| anyhow::anyhow!("{:?}", e))
         .context("Failed to initialize libmpv context")?;
 
-        // CRITICAL: hardware decoding and rendering optimization
-        mpv.set_property("hwdec", "auto-safe")
+        // 1. Force the low-power hardware profile before setting other video options
+        mpv.set_property("profile", "fast")
+            .map_err(|e| anyhow::anyhow!("{:?}", e))
+            .context("Failed to set profile=fast")?;
+
+        // 2. Try modern, more efficient APIs. gpu-next uses the newer libplacebo renderer (Vulkan/D3D11)
+        mpv.set_property("vo", "gpu-next,gpu")
+            .map_err(|e| anyhow::anyhow!("{:?}", e))
+            .context("Failed to set vo")?;
+
+        // 3. More aggressive hardware decoding
+        mpv.set_property("hwdec", "auto")
             .map_err(|e| anyhow::anyhow!("{:?}", e))
             .context("Failed to set hwdec")?;
-        
+
+        // 4. Force cheap scalers and disable dithering for maximum power savings
+        let _ = mpv.set_property("scale", "bilinear");
+        let _ = mpv.set_property("cscale", "bilinear");
+        let _ = mpv.set_property("dscale", "bilinear");
+        let _ = mpv.set_property("dither-depth", "no");
+
         // Enforce Zero-Copy direct rendering
         mpv.set_property("vd-lavc-dr", "yes")
             .map_err(|e| anyhow::anyhow!("{:?}", e))
             .context("Failed to set vd-lavc-dr")?;
-        
-        mpv.set_property("vo", "gpu")
-            .map_err(|e| anyhow::anyhow!("{:?}", e))
-            .context("Failed to set vo")?;
 
         // Caching for long videos
         mpv.set_property("cache", "yes")
             .map_err(|e| anyhow::anyhow!("{:?}", e))
             .context("Failed to set cache")?;
-        
-        // Set maximum demuxer cache to 75MB to avoid excessive RAM usage
-        mpv.set_property("demuxer-max-bytes", "75M")
+
+        // 5. Smooth Out Network CPU Spikes by increasing read-ahead buffer time
+        mpv.set_property("demuxer-readahead-secs", "60")
+            .map_err(|e| anyhow::anyhow!("{:?}", e))
+            .context("Failed to set demuxer-readahead-secs")?;
+
+        // Set maximum demuxer cache to 25MB to avoid excessive RAM usage
+        mpv.set_property("demuxer-max-bytes", "25M")
             .map_err(|e| anyhow::anyhow!("{:?}", e))
             .context("Failed to set demuxer-max-bytes")?;
 
-        mpv.set_property("demuxer-max-back-bytes", "25M")
+        mpv.set_property("demuxer-max-back-bytes", "12M")
             .map_err(|e| anyhow::anyhow!("{:?}", e))
             .context("Failed to set demuxer-max-back-bytes")?;
 
@@ -83,6 +108,13 @@ impl MpvPlayer {
             .context(format!("Failed to set property {}", name))
     }
 
+    /// Get a property from the mpv instance
+    pub fn get_property<T: libmpv2::GetData>(&self, name: &str) -> Result<T> {
+        self.mpv.get_property(name)
+            .map_err(|e| anyhow::anyhow!("{:?}", e))
+            .context(format!("Failed to get property {}", name))
+    }
+
     /// Execute a command on the mpv instance
     pub fn command(&self, name: &str, args: &[&str]) -> Result<()> {
         self.mpv.command(name, args)
@@ -92,7 +124,69 @@ impl MpvPlayer {
 
     /// Play the given URL
     pub fn play(&self, url: &str) -> Result<()> {
-        self.play_urls(&[url.to_string()])
+        if let Some(parsed) = parse_youtube_url(url) {
+            let video_id_str = match &parsed.video_id {
+                Some(id) => format!("\"{}\"", id),
+                None => "null".to_string(),
+            };
+            let playlist_id_str = match &parsed.playlist_id {
+                Some(id) => format!("\"{}\"", id),
+                None => "null".to_string(),
+            };
+            let json = format!(
+                "{{\n  \"url_type\": \"{}\",\n  \"video_id\": {},\n  \"playlist_id\": {},\n  \"start_time_seconds\": {},\n  \"playback_action\": \"{}\"\n}}",
+                parsed.url_type,
+                video_id_str,
+                playlist_id_str,
+                parsed.start_time_seconds,
+                parsed.playback_action
+            );
+            println!("YouTube URL Handler Action:\n{}", json);
+
+            // Execute the playback action based on the parsed results
+            match parsed.url_type.as_str() {
+                "timestamped" => {
+                    let start_str = parsed.start_time_seconds.to_string();
+                    self.mpv.set_property("start", start_str.as_str())
+                        .map_err(|e| anyhow::anyhow!("{:?}", e))?;
+                    
+                    self.mpv.command("loadfile", &[url])
+                        .map_err(|e| anyhow::anyhow!("{:?}", e))?;
+                    
+                    // Reset start property to avoid affecting subsequent files
+                    let _ = self.mpv.set_property("start", "none");
+                }
+                "playlist_item" => {
+                    if let Some(idx) = parsed.index {
+                        let start_idx = idx.saturating_sub(1);
+                        let start_idx_str = start_idx.to_string();
+                        self.mpv.set_property("playlist-start", start_idx_str.as_str())
+                            .map_err(|e| anyhow::anyhow!("{:?}", e))?;
+                    }
+                    // Enable playlist loading
+                    self.mpv.set_property("ytdl-raw-options", "yes-playlist=")
+                        .map_err(|e| anyhow::anyhow!("{:?}", e))?;
+
+                    self.mpv.command("loadfile", &[url])
+                        .map_err(|e| anyhow::anyhow!("{:?}", e))?;
+                }
+                "pure_playlist" => {
+                    // Enable playlist loading
+                    self.mpv.set_property("ytdl-raw-options", "yes-playlist=")
+                        .map_err(|e| anyhow::anyhow!("{:?}", e))?;
+
+                    self.mpv.command("loadfile", &[url])
+                        .map_err(|e| anyhow::anyhow!("{:?}", e))?;
+                }
+                _ => {
+                    self.mpv.command("loadfile", &[url])
+                        .map_err(|e| anyhow::anyhow!("{:?}", e))?;
+                }
+            }
+            Ok(())
+        } else {
+            self.play_urls(&[url.to_string()])
+        }
     }
 
     /// Play multiple URLs (e.g., video + audio)
@@ -153,11 +247,29 @@ impl MpvPlayer {
     /// Block natively on the mpv event loop until shutdown/close
     pub fn wait(&mut self) {
         loop {
-            // -1.0 blocks the thread natively (0% CPU)
+            // -1.0 blocks the thread natively (0% CPU) until a new event arrives
             match self.mpv.wait_event(-1.0) {
                 Some(Ok(libmpv2::events::Event::Shutdown)) => break,
-                Some(Err(_)) | None => std::thread::sleep(std::time::Duration::from_millis(10)),
-                _ => {}
+                
+                // Catch the reason the file ended
+                Some(Ok(libmpv2::events::Event::EndFile(reason))) => {
+                    // In libmpv, the reason is returned as a raw u32 integer.
+                    // 0 = EOF (Naturally finished playing)
+                    // 2 = Stop (User skipped the track or changed the URL)
+                    // 3 = Quit
+                    
+                    if reason == 0 { // Check for EOF
+                        let current_pos = self.get_property::<i64>("playlist-pos-1").unwrap_or(1);
+                        let total_count = self.get_property::<i64>("playlist-count").unwrap_or(1);
+
+                        // If it naturally finished AND it is the last video, shut down.
+                        if current_pos >= total_count {
+                            break;
+                        }
+                    }
+                }
+                // Just loop back and block again immediately
+                _ => continue,
             }
         }
     }

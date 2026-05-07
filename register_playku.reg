@@ -1,0 +1,12 @@
+Windows Registry Editor Version 5.00
+
+[HKEY_CLASSES_ROOT\playku]
+@="URL:Playku Protocol"
+"URL Protocol"=""
+
+[HKEY_CLASSES_ROOT\playku\shell]
+
+[HKEY_CLASSES_ROOT\playku\shell\open]
+
+[HKEY_CLASSES_ROOT\playku\shell\open\command]
+@="\"C:\\\\Users\\\\Administrator\\\\Documents\\\\playku\\\\target\\\\debug\\\\playku-engine.exe\" \"%1\""
