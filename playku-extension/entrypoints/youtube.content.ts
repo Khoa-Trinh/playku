@@ -25,7 +25,7 @@ export default defineContentScript({
       container.innerHTML = `
         <div id="playku-menu-options" style="display: flex; align-items: center; opacity: 0; width: 0px; transition: opacity 0.2s ease, width 0.3s cubic-bezier(0.25, 1, 0.5, 1), padding-left 0.3s cubic-bezier(0.25, 1, 0.5, 1); pointer-events: none; overflow: hidden; box-sizing: border-box; padding-left: 0px; flex-shrink: 0;">
           <label id="playku-ontop-label" style="display: flex; align-items: center; gap: 4px; color: #ffffff; font-family: system-ui, -apple-system, sans-serif; font-size: 9px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.6px; cursor: pointer; user-select: none; white-space: nowrap;">
-            <input type="checkbox" id="playku-ontop-checkbox" checked style="accent-color: #ffffff; cursor: pointer; width: 11px; height: 11px; margin: 0; background: transparent; border: 1px solid rgba(255, 255, 255, 0.4);" />
+            <input type="checkbox" id="playku-ontop-checkbox" style="accent-color: #ffffff; cursor: pointer; width: 11px; height: 11px; margin: 0; background: transparent; border: 1px solid rgba(255, 255, 255, 0.4);" />
             <span>On Top</span>
           </label>
           <div style="width: 1px; height: 10px; background: rgba(255, 255, 255, 0.2); margin-left: 6px; margin-right: 6px;"></div>
@@ -106,7 +106,7 @@ export default defineContentScript({
 
         const ontopCheckbox = container.querySelector('#playku-ontop-checkbox') as HTMLInputElement;
         const audioCheckbox = container.querySelector('#playku-audio-checkbox') as HTMLInputElement;
-        const isChecked = ontopCheckbox ? ontopCheckbox.checked : true;
+        const isChecked = ontopCheckbox ? ontopCheckbox.checked : false;
         const isAudioChecked = audioCheckbox ? audioCheckbox.checked : false;
 
         // Parse the current URL so we can easily manipulate its parameters

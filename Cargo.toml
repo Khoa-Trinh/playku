@@ -6,15 +6,9 @@ edition = "2021"
 [dependencies]
 anyhow = "1.0"
 libmpv2 = "5.0.3"
-eframe = "0.27"
 
-[[bin]]
-name = "playku-ui"
-path = "src/bin/ui.rs"
 
-[[bin]]
-name = "playku-engine"
-path = "src/bin/engine.rs"
+
 
 [profile.release]
 lto = true          # Link Time Optimization (Removes dead code across crates)

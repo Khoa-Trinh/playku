@@ -25,9 +25,6 @@ fn main() -> Result<()> {
         raw_url = stripped.to_string();
     }
 
-
-
-    // Parse modern query parameter indicators (injected by extension)
     if raw_url.contains("playku_ontop=true") {
         always_on_top = true;
     }
@@ -52,7 +49,7 @@ fn main() -> Result<()> {
 
     // 2. Locate the native config folder (mpv_config is automatically placed alongside the exe by build.rs)
     let mut exe_path = env::current_exe().expect("Failed to get executable path");
-    exe_path.pop(); // Remove playku-engine.exe from the path
+    exe_path.pop(); // Remove playku.exe from the path
     
     let config_dir = exe_path.join("mpv_config");
     let safe_config_path = config_dir.to_str().unwrap().replace("\\", "/");
@@ -72,22 +69,6 @@ fn main() -> Result<()> {
     // 5. Natively block the thread (0% CPU) until the video window is closed
     player.wait();
     
-    println!("Playback closed. Spawning playku-ui and shutting down engine...");
-
-    // 6. Spawn the UI launcher as a detached process
-    let mut exe_path = env::current_exe().expect("Failed to get executable path");
-    exe_path.pop();
-    
-    let ui_binary = if cfg!(target_os = "windows") {
-        "playku-ui.exe"
-    } else {
-        "playku-ui"
-    };
-    let ui_path = exe_path.join(ui_binary);
-
-    std::process::Command::new(&ui_path)
-        .spawn()
-        .expect("Failed to restart UI");
-
+    println!("Playback closed. Shutting down playku engine cleanly...");
     Ok(())
 }

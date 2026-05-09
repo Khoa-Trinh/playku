@@ -75,6 +75,11 @@ impl MpvPlayer {
             .map_err(|e| anyhow::anyhow!("{:?}", e))
             .context("Failed to set demuxer-max-back-bytes")?;
 
+        // Limit yt-dlp subtitle download to English only (prevents fetching dozens of auto-langs)
+        mpv.set_property("ytdl-raw-options", "sub-langs=en")
+            .map_err(|e| anyhow::anyhow!("{:?}", e))
+            .context("Failed to set default ytdl-raw-options")?;
+
         // Window Management
         mpv.set_property("border", "no")
             .map_err(|e| anyhow::anyhow!("{:?}", e))
@@ -163,16 +168,16 @@ impl MpvPlayer {
                         self.mpv.set_property("playlist-start", start_idx_str.as_str())
                             .map_err(|e| anyhow::anyhow!("{:?}", e))?;
                     }
-                    // Enable playlist loading
-                    self.mpv.set_property("ytdl-raw-options", "yes-playlist=")
+                    // Enable playlist loading with limited sub-langs
+                    self.mpv.set_property("ytdl-raw-options", "yes-playlist=,sub-langs=en")
                         .map_err(|e| anyhow::anyhow!("{:?}", e))?;
 
                     self.mpv.command("loadfile", &[url])
                         .map_err(|e| anyhow::anyhow!("{:?}", e))?;
                 }
                 "pure_playlist" => {
-                    // Enable playlist loading
-                    self.mpv.set_property("ytdl-raw-options", "yes-playlist=")
+                    // Enable playlist loading with limited sub-langs
+                    self.mpv.set_property("ytdl-raw-options", "yes-playlist=,sub-langs=en")
                         .map_err(|e| anyhow::anyhow!("{:?}", e))?;
 
                     self.mpv.command("loadfile", &[url])
